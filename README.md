@@ -1,6 +1,6 @@
 # Despliege y Contenedorización de applicaciones web con Docker
 
-### ¿Qué es desplegar en el contextó de aplicaciones web?
+### ¿ Qué es desplegar en el contextó de aplicaciones web?
 
 Al hablar de desplegar aplicaciones web nos estamos refierendo al proceso
 por el mediante cual le servimos nuestras aplicaciónes a nuestros usuarios
@@ -353,3 +353,63 @@ y para correrlo
 docker run -d -p 3000:3000/tcp us-east1-docker.pkg.dev/miscellaneous-429614/misc/um-device-tracker
 ```
 y tenemos un contenedor de docker listo!
+
+
+### ¿Ahora qué? 
+
+El siguiente paso mas obvio sería adquirir un dominio y hacer que ese dominio redigirá
+a nuestra aplicación con algo como nginx
+
+```bash
+sudo apt install nginx
+```
+
+y en /etc/nginx/sites-available creamos un archivo de configuración
+como:
+
+```nginx
+server {
+    server_name DOMAIN.COM;
+
+    location / {
+        proxy_pass http://localhost:APP_PORT;
+        proxy_set_header Host $host; # Forwarded host
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_redirect off;
+ # WebSocket support
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/DOMAIN.COM/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/DOMAIN.COM/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+
+}
+
+server {
+    listen 80;
+
+    server_name DOMAIN.COM;
+
+    return 301 https://$host$request_uri;
+}
+
+```
+Luego logramos habilitarlo al hacer un symlink desde el directorio /etc/nginx/sites-enabled
+
+```bash
+sudo ln -s /etc/nginx/sites-available/[filename] /etc/nginx/sites-enabled/
+```
+
+El despliegue y mantenimiento de infraestructura de aplicaciones es un mundo amplio
+y hay muchas razones porque esta configuración no seria muy optima en ciertos aspectos
+como lo es el tiempo fuera de servicio al desplegar una versión nueva.
+
+El proceso en si es muy sencillo ya que solo seria volver a jalar la imagen y correr otro contenedor
+pero el despliegue a escala tiende a ser mucho mas complejo y ahi es donde la contenedorización brilla
