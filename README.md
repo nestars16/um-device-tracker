@@ -413,3 +413,10 @@ como lo es el tiempo fuera de servicio al desplegar una versión nueva.
 
 El proceso en si es muy sencillo ya que solo seria volver a jalar la imagen y correr otro contenedor
 pero el despliegue a escala tiende a ser mucho mas complejo y ahi es donde la contenedorización brilla
+
+A continuación hay una lista de temas que son relevantes y que se pueden indagar mas a profundidad:
+
+1. [Load Balancing](https://www.cloudflare.com/learning/performance/what-is-load-balancing/)
+2. [Canary Deployments](https://cloud.google.com/deploy/docs/deployment-strategies/canary)
+3. [Auto Scaling](https://www2.eecs.berkeley.edu/Pubs/TechRpts/2009/EECS-2009-28.pdf)
+4. [Kubernetes (K8s)](https://www.edx.org/learn/kubernetes/the-linux-foundation-introduction-to-kubernetes)
