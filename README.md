@@ -4,7 +4,7 @@
 
 Al hablar de desplegar aplicaciones web nos estamos refierendo al proceso
 por el mediante cual le servimos nuestras aplicaciónes a nuestros usuarios
-por medio de una aplicación en un servidor que ellos pueden solicitar desde sus
+por medio de un servidor que ellos pueden solicitar desde sus
 navegadores.
 
 Las formas en las cuales se puede lograrlo son muy variadas, y siempre

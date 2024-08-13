@@ -12,5 +12,9 @@ update-assets:
   cd frontend && npm run build
   mv frontend/dist/* static
 
+clean:
+  rm -rf static/*
+  rm -rf frontend/dist
+
 
   
