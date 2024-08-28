@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 
 use axum::{
     error_handling::HandleErrorLayer,
@@ -44,7 +44,7 @@ async fn main() {
             .await
             .expect("Failed to connect to db");
 
-    let data_source = Arc::new(CircuitDB { pool });
+    let data_source = CircuitDB { pool };
 
     let app_state = AppState::new(data_source);
 

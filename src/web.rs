@@ -89,6 +89,11 @@ pub mod requests {
         pub password: String,
         pub role: String,
     }
+
+    #[derive(Deserialize)]
+    pub struct ReportAcknowledgement {
+        pub id: String,
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -130,12 +135,14 @@ pub mod handlers {
     use axum::Router;
     use ulid::Ulid;
 
-    use crate::model::{AppState, Circuit, DataSource};
+    use crate::model::{
+        AppState, Circuit, CircuitImportReport, DataSource, NotificationRepository, Reporter,
+    };
 
     pub mod circuits {
         use axum::{
-            extract::{Path, State},
-            http::StatusCode,
+            extract::{Multipart, Path, State},
+            http::{Response, StatusCode},
             middleware::from_fn,
             response::IntoResponse,
             routing::{get, post, put},
@@ -145,14 +152,15 @@ pub mod handlers {
         use ulid::Ulid;
 
         use crate::{
-            model::{AppState, Circuit, CircuitDTO, DataSource},
+            model::{AppState, Circuit, CircuitDTO, CircuitImportReport, DataSource, Reporter},
             web::{middleware::validate_role_mw, responses::RequestResponse},
         };
 
         pub fn get_router<S>() -> Router<AppState<Circuit, S>>
         where
-            S: DataSource<Circuit> + Clone + Send + Sync + 'static,
-            S::Id: From<Ulid> + Send + Sync,
+            S: DataSource<Circuit> + Clone + Send + Sync + 'static + Reporter<CircuitImportReport>,
+            <S as DataSource<Circuit>>::Id: From<Ulid> + Send + Sync,
+            <S as Reporter<CircuitImportReport>>::Id: From<std::string::String>,
         {
             Router::new()
                 .route(
@@ -163,6 +171,17 @@ pub mod handlers {
                 .route(
                     "/update",
                     put(update).layer(from_fn(|req, next| validate_role_mw(req, next, &["admin"]))),
+                )
+                .route(
+                    "/export",
+                    get(export_circuits).layer(from_fn(|req, next| {
+                        validate_role_mw(req, next, &["admin", "user"])
+                    })),
+                )
+                .route(
+                    "/import",
+                    post(import_circuits)
+                        .layer(from_fn(|req, next| validate_role_mw(req, next, &["admin"]))),
                 )
                 .route(
                     "/:circuit_id",
@@ -185,7 +204,7 @@ pub mod handlers {
         where
             S: DataSource<Circuit> + Clone + Send + Sync + 'static,
         {
-            RequestResponse::<()>::from_result(
+            RequestResponse::<Circuit>::from_result(
                 state.data_source.create(circuit_dto.into()).await,
                 (StatusCode::CREATED, StatusCode::INTERNAL_SERVER_ERROR),
             )
@@ -212,7 +231,7 @@ pub mod handlers {
         where
             S: DataSource<Circuit> + Clone + Send + Sync + 'static,
         {
-            RequestResponse::<()>::from_result(
+            RequestResponse::<Circuit>::from_result(
                 state.data_source.update(circuit).await,
                 (StatusCode::OK, StatusCode::INTERNAL_SERVER_ERROR),
             )
@@ -226,6 +245,368 @@ pub mod handlers {
                 state.data_source.get_all().await,
                 (StatusCode::OK, StatusCode::INTERNAL_SERVER_ERROR),
             )
+        }
+
+        async fn export_circuits<S>(State(state): State<AppState<Circuit, S>>) -> impl IntoResponse
+        where
+            S: DataSource<Circuit> + Clone + Send + Sync + 'static,
+        {
+            let all_circuits_result = state.data_source.get_all().await;
+
+            match all_circuits_result {
+                Ok(circuits) => {
+                    let mut writer = csv::Writer::from_writer(vec![]);
+
+                    for circuit in circuits {
+                        let _ = writer.serialize(circuit);
+                    }
+
+                    let csv_data = writer.into_inner();
+
+                    match csv_data {
+                        Ok(data) => {
+                            let headers = [
+                                (axum::http::header::CONTENT_TYPE, "text/csv"),
+                                (
+                                    axum::http::header::CONTENT_DISPOSITION,
+                                    "attachment; filename=\"circuits.csv\"",
+                                ),
+                            ];
+
+                            (headers, axum::body::Body::from(data)).into_response()
+                        }
+                        Err(e) => {
+                            tracing::error!("Error ocurred exporting csv {}", e);
+
+                            Response::builder()
+                                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                                .body(axum::body::Body::empty())
+                                .expect("Is valid response")
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("Error ocurred exporting csv {}", e);
+
+                    Response::builder()
+                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .body(axum::body::Body::empty())
+                        .expect("Is valid response")
+                }
+            }
+        }
+
+        async fn import_circuits<S>(
+            State(state): State<AppState<Circuit, S>>,
+            mut multipart: Multipart,
+        ) -> impl IntoResponse
+        where
+            S: DataSource<Circuit> + Reporter<CircuitImportReport> + Clone + Send + Sync + 'static,
+
+            <S as Reporter<CircuitImportReport>>::Id: From<std::string::String>,
+        {
+            if let Ok(Some(field)) = multipart.next_field().await {
+                if !field.content_type().is_some_and(|ct| ct == "text/csv") {
+                    return RequestResponse::<&str>::Error {
+                        message: "No data field".to_string(),
+                        code: StatusCode::BAD_REQUEST,
+                    }
+                    .into_response();
+                }
+
+                let file_name = field.file_name().map(|s| s.to_string());
+                let csv_data = field.text().await;
+
+                match csv_data {
+                    Ok(raw) => {
+                        let report_begin_id = ulid::Ulid::new().to_string();
+                        let report_begin_result = state
+                            .data_source
+                            .report(CircuitImportReport {
+                                r#type: "finished".to_string(),
+                                id: report_begin_id.clone(),
+                                message: "In progress".to_string(),
+                                file_name: file_name.clone(),
+                            })
+                            .await;
+
+                        match report_begin_result {
+                            Ok(_) => {
+                                tracing::info!("Beginning report");
+                            }
+                            Err(e) => {
+                                tracing::error!("Failed to begin report : {}", e);
+                                return RequestResponse::<&str>::Error {
+                                    message: e.to_string(),
+                                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                                }
+                                .into_response();
+                            }
+                        }
+
+                        tokio::spawn(async move {
+                            let mut num_errors: i32 = 0;
+                            let mut reader = csv::ReaderBuilder::new()
+                                .has_headers(true)
+                                .from_reader(raw.as_bytes());
+
+                            for record in reader.records() {
+                                match record {
+                                    Ok(row) => {
+                                        let circuit_deserialize_res: Result<Circuit, csv::Error> =
+                                            row.deserialize(None);
+
+                                        if let Ok(mut circuit) = circuit_deserialize_res {
+                                            if circuit.id.is_empty() {
+                                                circuit.id = ulid::Ulid::new().to_string();
+                                                match state.data_source.create(circuit).await {
+                                                    Ok(circuit) => {
+                                                        tracing::info!(
+                                                            "Successfully created circuit {:?}",
+                                                            circuit
+                                                        )
+                                                    }
+                                                    Err(e) => {
+                                                        let report_result = state
+                                                            .data_source
+                                                            .report(CircuitImportReport {
+                                                                id: ulid::Ulid::new().to_string(),
+                                                                file_name: file_name.clone(),
+                                                                r#type: "error".to_string(),
+                                                                message: e.to_string(),
+                                                            })
+                                                            .await;
+
+                                                        match report_result {
+                                                            Err(e) => {
+                                                                tracing::error!(
+                                                                "Failed to report error to db : {}",
+                                                                e
+                                                            );
+                                                            }
+                                                            _ => {}
+                                                        }
+
+                                                        tracing::error!(
+                                                            "Failed to create circuit {:?}",
+                                                            e
+                                                        );
+
+                                                        num_errors += 1;
+                                                    }
+                                                }
+                                                continue;
+                                            }
+
+                                            match state.data_source.update(circuit).await {
+                                                Ok(circuit) => {
+                                                    tracing::info!(
+                                                        "Succesfully updated circuit {:?}",
+                                                        circuit
+                                                    )
+                                                }
+                                                Err(e) => {
+                                                    tracing::error!("Failed to update imported circuit with error {}", e);
+                                                    num_errors += 1;
+
+                                                    let report_result = state
+                                                        .data_source
+                                                        .report(CircuitImportReport {
+                                                            id: ulid::Ulid::new().to_string(),
+                                                            file_name: file_name.clone(),
+                                                            r#type: "error".to_string(),
+                                                            message: e.to_string(),
+                                                        })
+                                                        .await;
+
+                                                    match report_result {
+                                                        Err(e) => {
+                                                            tracing::error!(
+                                                                "Failed to report error to db : {}",
+                                                                e
+                                                            );
+                                                        }
+                                                        _ => {}
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        tracing::error!(
+                                            "Failed reading record from imported csv : {}",
+                                            e
+                                        );
+                                        let report_result = state
+                                            .data_source
+                                            .report(CircuitImportReport {
+                                                id: ulid::Ulid::new().to_string(),
+                                                file_name: file_name.clone(),
+                                                r#type: "error".to_string(),
+                                                message: e.to_string(),
+                                            })
+                                            .await;
+
+                                        match report_result {
+                                            Err(e) => {
+                                                tracing::error!(
+                                                    "Failed to report error to db : {}",
+                                                    e
+                                                );
+                                            }
+                                            _ => {}
+                                        }
+                                        num_errors += 1
+                                    }
+                                }
+                            }
+
+                            let finish_report_status = state
+                                .data_source
+                                .finish(
+                                    report_begin_id.into(),
+                                    format!("Finished import with {} errors", num_errors),
+                                )
+                                .await;
+
+                            match finish_report_status {
+                                Ok(_) => {}
+                                Err(e) => {
+                                    tracing::error!("Failed to finish reporting import : {}", e)
+                                }
+                            };
+                        });
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to read csv file");
+                        return RequestResponse::<String>::Error {
+                            message: e.to_string(),
+                            code: StatusCode::BAD_REQUEST,
+                        }
+                        .into_response();
+                    }
+                }
+
+                RequestResponse::<&str>::Success {
+                    data: "Successfully started report",
+                    code: StatusCode::OK,
+                }
+                .into_response()
+            } else {
+                RequestResponse::<&str>::Error {
+                    message: "Malformed request".to_string(),
+                    code: StatusCode::BAD_REQUEST,
+                }
+                .into_response()
+            }
+        }
+
+        pub mod reporting {
+            use axum::extract::State;
+            use axum::middleware::from_fn;
+
+            use axum::Json;
+            use axum::{
+                http::StatusCode,
+                response::IntoResponse,
+                routing::{get, post},
+                Router,
+            };
+            use ulid::Ulid;
+
+            use crate::model::{AppState, Circuit, DataSource, NotificationRepository, Reporter};
+            use crate::web::requests::ReportAcknowledgement;
+            use crate::{
+                model::CircuitImportReport,
+                web::{middleware::validate_role_mw, responses::RequestResponse},
+            };
+
+            pub fn get_router<S>() -> Router<AppState<Circuit, S>>
+            where
+                S: DataSource<Circuit>
+                    + Clone
+                    + Send
+                    + Sync
+                    + 'static
+                    + NotificationRepository<CircuitImportReport>
+                    + Reporter<CircuitImportReport>,
+
+                <S as DataSource<Circuit>>::Id: From<Ulid> + Send + Sync,
+                <S as Reporter<CircuitImportReport>>::Id: From<std::string::String>,
+            {
+                Router::new()
+                    .route(
+                        "/get/unseen",
+                        get(get_all_unseen_reports)
+                            .layer(from_fn(|req, next| validate_role_mw(req, next, &["admin"]))),
+                    )
+                    .route(
+                        "/get/all",
+                        get(get_all_reports)
+                            .layer(from_fn(|req, next| validate_role_mw(req, next, &["admin"]))),
+                    )
+                    .route(
+                        "/acknowledge",
+                        post(acknowledge_report)
+                            .layer(from_fn(|req, next| validate_role_mw(req, next, &["admin"]))),
+                    )
+            }
+
+            async fn get_all_unseen_reports<S>(
+                State(state): State<AppState<Circuit, S>>,
+            ) -> impl IntoResponse
+            where
+                S: DataSource<Circuit>
+                    + Clone
+                    + Send
+                    + Sync
+                    + 'static
+                    + NotificationRepository<CircuitImportReport>,
+            {
+                RequestResponse::<Vec<CircuitImportReport>>::from_result(
+                    NotificationRepository::get_new(&state.data_source).await,
+                    (StatusCode::OK, StatusCode::INTERNAL_SERVER_ERROR),
+                )
+            }
+
+            async fn get_all_reports<S>(
+                State(state): State<AppState<Circuit, S>>,
+            ) -> impl IntoResponse
+            where
+                S: DataSource<Circuit>
+                    + NotificationRepository<CircuitImportReport>
+                    + Clone
+                    + Send
+                    + Sync
+                    + 'static,
+            {
+                RequestResponse::<Vec<CircuitImportReport>>::from_result(
+                    NotificationRepository::get_all(&state.data_source).await,
+                    (StatusCode::OK, StatusCode::INTERNAL_SERVER_ERROR),
+                )
+            }
+
+            async fn acknowledge_report<S>(
+                State(state): State<AppState<Circuit, S>>,
+                Json(acknowledgement): Json<ReportAcknowledgement>,
+            ) -> impl IntoResponse
+            where
+                S: DataSource<Circuit>
+                    + Reporter<CircuitImportReport>
+                    + Clone
+                    + Send
+                    + Sync
+                    + 'static,
+                <S as Reporter<CircuitImportReport>>::Id: From<std::string::String>,
+            {
+                RequestResponse::<()>::from_result(
+                    state
+                        .data_source
+                        .acknowledge(acknowledgement.id.into())
+                        .await,
+                    (StatusCode::OK, StatusCode::INTERNAL_SERVER_ERROR),
+                )
+            }
         }
     }
 
@@ -323,10 +704,20 @@ pub mod handlers {
 
     pub fn get_api_router<S>() -> Router<AppState<Circuit, S>>
     where
-        S: DataSource<Circuit> + Clone + Send + Sync + 'static,
-        S::Id: From<Ulid> + Send + Sync,
+        S: DataSource<Circuit>
+            + Clone
+            + Send
+            + Sync
+            + 'static
+            + Reporter<CircuitImportReport>
+            + NotificationRepository<CircuitImportReport>,
+        <S as DataSource<Circuit>>::Id: From<Ulid> + Send + Sync,
+        <S as Reporter<CircuitImportReport>>::Id: From<std::string::String>,
     {
-        Router::new().nest("/circuits", circuits::get_router())
+        Router::new().nest(
+            "/circuits",
+            circuits::get_router().nest("/reports", circuits::reporting::get_router()),
+        )
     }
 
     pub fn get_auth_router() -> Router {

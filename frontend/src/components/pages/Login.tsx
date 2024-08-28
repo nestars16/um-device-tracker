@@ -50,7 +50,7 @@ function Login({ role }: { role: string }) {
     mutationFn: async (
       data: LoginRequest,
     ): Promise<RequestResponse<LoginResponse>> => {
-      const response = await fetch("/auth/login", {
+      const response = await fetch(`/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

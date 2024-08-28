@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use eyre::Result;
 use serde::{Deserialize, Serialize};
 use sqlx::prelude::FromRow;
@@ -10,9 +8,40 @@ where
 {
     type Id;
     fn get_all(&self) -> impl std::future::Future<Output = Result<Vec<T>>> + Send;
-    fn update(&self, value: T) -> impl std::future::Future<Output = Result<()>> + Send;
+    fn update(&self, value: T) -> impl std::future::Future<Output = Result<T>> + Send;
     fn get(&self, id: Self::Id) -> impl std::future::Future<Output = Result<T>> + Send;
-    fn create(&self, value: T) -> impl std::future::Future<Output = Result<()>> + Send;
+    fn create(&self, value: T) -> impl std::future::Future<Output = Result<T>> + Send;
+}
+
+pub trait Reporter<T>: Clone + Send + Sync + 'static
+where
+    T: Sized + Send + Sync,
+{
+    type Id;
+
+    fn report(&self, value: T) -> impl std::future::Future<Output = Result<T>> + Send;
+    fn acknowledge(&self, id: Self::Id) -> impl std::future::Future<Output = Result<()>> + Send;
+    fn finish(
+        &self,
+        id: Self::Id,
+        message: String,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
+}
+
+pub trait NotificationRepository<T>: Clone + Send + Sync + 'static
+where
+    T: Sized + Send + Sync,
+{
+    fn get_all(&self) -> impl std::future::Future<Output = Result<Vec<T>>> + Send;
+    fn get_new(&self) -> impl std::future::Future<Output = Result<Vec<T>>> + Send;
+}
+
+#[derive(Serialize)]
+pub struct CircuitImportReport {
+    pub r#type: String,
+    pub id: String,
+    pub message: String,
+    pub file_name: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, FromRow)]
@@ -45,7 +74,7 @@ where
     S: DataSource<T>,
     T: Send + Sync,
 {
-    pub data_source: Arc<S>,
+    pub data_source: S,
     _marker: std::marker::PhantomData<T>,
 }
 
@@ -54,7 +83,7 @@ where
     S: DataSource<T>,
     T: Send + Sync,
 {
-    pub fn new(data_source: Arc<S>) -> AppState<T, S> {
+    pub fn new(data_source: S) -> AppState<T, S> {
         AppState {
             data_source,
             _marker: std::marker::PhantomData,

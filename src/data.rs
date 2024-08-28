@@ -1,5 +1,5 @@
-use crate::model::{Circuit, DataSource};
-use sqlx::PgPool;
+use crate::model::{Circuit, CircuitImportReport, DataSource, NotificationRepository, Reporter};
+use sqlx::{query, query_as, PgPool};
 
 #[derive(Clone)]
 pub struct CircuitDB {
@@ -18,8 +18,8 @@ impl DataSource<Circuit> for CircuitDB {
             .map_err(|e| eyre::Report::msg(e.to_string()))
     }
 
-    async fn update(&self, value: Circuit) -> Result<()> {
-        sqlx::query!(
+    async fn update(&self, value: Circuit) -> Result<Circuit> {
+        let result = sqlx::query!(
             r#"
             UPDATE circuits SET
                 state = $1,
@@ -68,7 +68,9 @@ impl DataSource<Circuit> for CircuitDB {
         .await
         .map_err(|e| eyre::Report::msg(e.to_string()))?;
 
-        Ok(())
+        tracing::debug!("Got result from update query {:?}", result);
+
+        Ok(value)
     }
 
     async fn get(&self, id: Self::Id) -> Result<Circuit> {
@@ -79,7 +81,7 @@ impl DataSource<Circuit> for CircuitDB {
             .map_err(|e| eyre::Report::msg(e.to_string()))
     }
 
-    async fn create(&self, value: Circuit) -> Result<()> {
+    async fn create(&self, value: Circuit) -> Result<Circuit> {
         sqlx::query!(
             r#"
             INSERT INTO circuits (
@@ -116,6 +118,83 @@ impl DataSource<Circuit> for CircuitDB {
         .execute(&self.pool)
         .await
         .map_err(|e| eyre::Report::msg(e.to_string()))?;
+
+        Ok(value)
+    }
+}
+
+impl Reporter<CircuitImportReport> for CircuitDB {
+    type Id = String;
+
+    async fn report(&self, value: CircuitImportReport) -> Result<CircuitImportReport> {
+        query!(
+            r#"
+            INSERT INTO import_report(type, id, message,file_name)
+            VALUES ($1,$2,$3, $4)
+            "#,
+            value.r#type,
+            value.id,
+            value.message,
+            value.file_name
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(value)
+    }
+
+    async fn acknowledge(&self, id: Self::Id) -> Result<()> {
+        query!(
+            r#"
+            UPDATE import_report
+            SET seen = TRUE
+            WHERE id = $1
+            "#,
+            id
+        )
+        .execute(&self.pool)
+        .await?;
+
         Ok(())
+    }
+
+    async fn finish(&self, id: Self::Id, message: String) -> Result<()> {
+        query!(
+            r#"
+            UPDATE import_report
+            SET message = $2
+            WHERE id = $1
+            "#,
+            id,
+            message
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+}
+
+impl NotificationRepository<CircuitImportReport> for CircuitDB {
+    async fn get_all(&self) -> Result<Vec<CircuitImportReport>> {
+        let all_notifications = query_as!(
+            CircuitImportReport,
+            "SELECT type, id, message, file_name FROM import_report"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(all_notifications)
+    }
+
+    async fn get_new(&self) -> Result<Vec<CircuitImportReport>> {
+        let new_notifications = query_as!(
+            CircuitImportReport,
+            "SELECT type, id, message, file_name FROM import_report WHERE type = 'finish' AND seen = FALSE"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(new_notifications)
     }
 }

@@ -51,7 +51,7 @@ CREATE TABLE public.circuits (
 ALTER TABLE public.circuits OWNER TO postgres;
 
 --
--- Name: users; Type: TABLE; Schema: public; Owner: um_device_tracker
+-- Name: users; Type: TABLE; Schema: public; Owner: postgres 
 --
 
 CREATE TABLE public.users (
@@ -60,8 +60,7 @@ CREATE TABLE public.users (
     role character varying(24)
 );
 
-
-ALTER TABLE public.users OWNER TO um_device_tracker;
+ALTER TABLE public.users OWNER TO postgres;
 
 --
 -- Data for Name: circuits; Type: TABLE DATA; Schema: public; Owner: postgres
@@ -275,7 +274,7 @@ COPY public.circuits (id, state, site_name, ckt_id, parent, link_type, provider,
 
 
 --
--- Data for Name: users; Type: TABLE DATA; Schema: public; Owner: um_device_tracker
+-- Data for Name: users; Type: TABLE DATA; Schema: public; Owner: postgres 
 --
 
 COPY public.users (username, password, role) FROM stdin;
@@ -290,13 +289,6 @@ nesmb16	nestor123	user
 
 ALTER TABLE ONLY public.circuits
     ADD CONSTRAINT circuits_pkey PRIMARY KEY (id);
-
-
---
--- Name: TABLE circuits; Type: ACL; Schema: public; Owner: postgres
---
-
-GRANT ALL ON TABLE public.circuits TO um_device_tracker;
 
 
 --

@@ -1,6 +1,6 @@
-# Despliege y Contenedorización de applicaciones web con Docker
+# Despliege y contenedorización de applicaciones web con Docker
 
-### ¿ Qué es desplegar en el contextó de aplicaciones web?
+### ¿Qué es desplegar en el contextó de aplicaciones web?
 
 Al hablar de desplegar aplicaciones web nos estamos refierendo al proceso
 por el mediante cual le servimos nuestras aplicaciónes a nuestros usuarios
@@ -15,6 +15,15 @@ despliegue de software.
 Antes de llegar hacia el rasocinio de el _porqué_ eligiríamos docker sobre cualquier
 otro método de desplegar una aplicación, tenemos que poder ver la pintura completa hacia cuales
 son las opciones para lograr nuestra meta de poner nuestro código en el navegador de el usuario
+
+### Nuestra aplicación
+
+Antes de empezar y poder demostrar nuestro primer metodó de despliegue, hay que introducir nuestro
+ejemplo, que consiste de un servidor web escrito en un lenguaje compilado (Rust) que se encarga
+de las solicitudes a una aplicación de una pagina (SPA) que es accedida a través de el servidor web.
+
+Esto nos deja saber que hay 3 elementos principales, nuestro ejecutable, los archivos `js`,`html` y `css`
+al igual que nuestro ambiente
 
 ### Solo archivos
 
@@ -43,7 +52,6 @@ La estructura de los archivos escogida para nuestra aplicación es
 │   │   └── index-{content-hash}.css
 │   └── index.html
 ├── um-device-tracker
-    
 ```
 
 Donde `um-device-tracker` se trata de nuestro ejecutable, en el folder
@@ -173,6 +181,7 @@ sudo chown $USERNAME:$USERNAME /home/$USERNAME/.ssh/authorized_keys # Transferim
 sudo chmod 600 /home/$USERNAME/.ssh/authorized_keys # le damos solo al dueño permisos de lectura y edición
 ```
 
+
 Podemos salir y entrar con nuestro usuario creado
 
 ```bash
@@ -180,7 +189,7 @@ exit
 ssh $USERNAME@$SERVER_IP
 ```
 
-Ahora podemos deshabilitar ingreso con root,tendremos que editar el archivo
+Ahora podemos deshabilitar ingreso con root, tendremos que editar el archivo
 `/etc/ssh/sshd_config`
 
 ```bash
@@ -214,10 +223,10 @@ rm -rf static/*  #👈------- Esto elimina los archivos existentes en el folder 
 cd frontend && npm run build #👈---- generamos nuestros archivos estaticos
 mv frontend/dist/* static # 👈---- Los movemos a nuestro directorio de static
 cargo build --release #👈----- Compilamos nuestro binario
+
 scp target/release/um-device-tracker nestor@$SERVER_IP:um-device-tracker # 👈----- Utilizamos ssh para copiar los archivos en el servidor
 scp -r static nestor@$SERVER_IP:um-device-tracker #👈----- Utilizamos ssh para copiar los archivos en el servidor
 scp .env nestor@$SERVER_IP:um-device-tracker
-
 ```
 
 Luego dentro de el servidor, podemos iniciar nuestra aplicación
@@ -352,6 +361,7 @@ y para correrlo
 ```bash
 docker run -d -p 3000:3000/tcp us-east1-docker.pkg.dev/miscellaneous-429614/misc/um-device-tracker
 ```
+
 y tenemos un contenedor de docker listo!
 
 
@@ -399,8 +409,8 @@ server {
 
     return 301 https://$host$request_uri;
 }
-
 ```
+
 Luego logramos habilitarlo al hacer un symlink desde el directorio /etc/nginx/sites-enabled
 
 ```bash
