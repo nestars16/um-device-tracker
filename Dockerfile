@@ -43,6 +43,5 @@ RUN set -eux; \
 WORKDIR /app
 COPY --from=builder /app/um-device-tracker .
 COPY static static
-COPY .env .
 
 CMD ["/app/um-device-tracker"]

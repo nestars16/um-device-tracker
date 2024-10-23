@@ -107,12 +107,11 @@ Luego veremos los archivos html, js y css creados
 .
 ├── README.md
 ├── components.json
-├── dist   👈------------------------------------------ este folder se vuelve el folder static
+├── dist   # 👈------------------------------------------ este folder se vuelve el folder static
 │   ├── assets
-│   │   ├── index-{content-hash}.js   👈---- Todo se mantiene igual 
-│   │   └── index-{content-hash}.css  👈---- Todo se mantiene igual 
-│   └── index.html                    👈---- Todo se mantiene igual 
-├── index.html
+│   │   ├── index-{content-hash}.js   # 👈---- Todo se mantiene igual 
+│   │   └── index-{content-hash}.css  # 👈---- Todo se mantiene igual 
+│   └── index.html                    # 👈---- Todo se mantiene igual 
 ├── package-lock.json
 ├── package.json
 ├── postcss.config.js
@@ -142,7 +141,7 @@ si abrimos `id_rsa.pub` con `cat` veremos nuestra llave publica
 
 ```bash
 ⮞  cat ~/.ssh/id_rsa.pub
-ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDEbKyIMKS4pRrvClxASM6HazFypHLHYe+HCcIhawfVJROLtVhnU0PUI6olx+fDznP08/g93QFSCwtpASZXrO2cMGzCyhcN3CtR3xdZrjbUlBcc9xiCaSX8FGz2ECbg0CCGNTIz3DLy+I2WPRkJ63ufD2V1T2B/JiTzqTs3k2gmZSlEPvivgxCeNT3M4FmDioYbIGcFpQBGl3Our0TXKqm8eF9UTSPQyqgxdmiO4INErB3kHsnX3agAva5H/211ujKvt8XVrFw3YKUmNCD04OsqI9w+vt7youL3tlcFvFBV36V/80qSDEErYHWmd7gy0Vi4P/d18J6i8C+hbTwy7EW6OzOLXeLm+V8SJLi023032QxCxzmDBHO55VoBGYkZ+Dkh3ReFFucOBtHz4HOs4TTsO1jGUq+JKMCnHlpQHztdIyyYAUy+O2cYuzdI9q8QLA/s0hOtGpTX76lP+iR+16QinTPj7t6onYcBl7LE24yrJL51w923hmhavXK+RthRg9hON/zqJ0sgZGk9sMRRcLBuzV3kAUxXeIPBPWdF6qj8n+4caBuHnYFeAwOvJhO6JZhqP+/KmY4mPVhCE9CV43CbDUIJ0sVr1cXm5aOaSmpINTjUthmrfkOn3b3FAkxJJL9oIp5zciWi2PKYKawTsCFeDiRKBKa1o8Z9WXB+SsYiaQ== nesmb16@gmail.co
+ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDEbKyIMKS4pRrvClxASM6HazFypHLHYe+HCcIhawfVJROLtVhnU0PUI6olx+fDznP08/g93QFSCwtpASZXrO2cMGzCyhcN3CtR3xdZrjbUlBcc9xiCaSX8FGz2ECbg0CCGNTIz3DLy+I2WPRkJ63ufD2V1T2B/JiTzqTs3k2gmZSlEPvivgxCeNT3M4FmDioYbIGcFpQBGl3Our0TXKqm8eF9UTSPQyqgxdmiO4INErB3kHsnX3agAva5H/211ujKvt8XVrFw3YKUmNCD04OsqI9w+vt7youL3tlcFvFBV36V/80qSDEErYHWmd7gy0Vi4P/d18J6i8C+hbTwy7EW6OzOLXeLm+V8SJLi023032QxCxzmDBHO55VoBGYkZ+Dkh3ReFFucOBtHz4HOs4TTsO1jGUq+JKMCnHlpQHztdIyyYAUy+O2cYuzdI9q8QLA/s0hOtGpTX76lP+iR+16QinTPj7t6onYcBl7LE24yrJL51w923hmhavXK+RthRg9hON/zqJ0sgZGk9sMRRcLBuzV3kAUxXeIPBPWdF6qj8n+4caBuHnYFeAwOvJhO6JZhqP+/KmY4mPVhCE9CV43CbDUIJ0sVr1cXm5aOaSmpINTjUthmrfkOn3b3FAkxJJL9oIp5zciWi2PKYKawTsCFeDiRKBKa1o8Z9WXB+SsYiaQ== nesmb16@gmail.com
 ```
 
 Una vez configurado el servidor podemos entrar con el comando
@@ -161,22 +160,15 @@ Primero vamos a crear un usuario por el cual podemos ingresar
 ```bash
 useradd -m $USERNAME
 # la bandera -m es tal que crea un directorio para el usuario
-usermod -aG sudo $USERNAME 
-# Este comando nos dará acceso al comando de `sudo` para
-# poder realizar comandos con privilegios elevados
+usermod -aG sudo $USERNAME  # Este comando nos dará acceso al comando de `sudo` para poder realizar comandos con privilegios elevados
 passwd $USERNAME
-
 # Los comandos siguientes se utilizan para 
 # poder ingresar con ssh a nuestro
 # usuario
-
 sudo mkdir -p /home/$USERNAME/.ssh # Creamos un directorio para los credenciales ssh
 sudo chmod 700 /home/$USERNAME/.ssh # le damos permisos a nuestro usuario
 sudo chown $USERNAME:$USERNAME /home/$USERNAME/.ssh # transferimos propiedad de el directorio
-
 sudo cp /root/.ssh/authorized_keys /home/$USERNAME/.ssh/ # Copiamos las credenciales de la cuenta
-
-
 sudo chown $USERNAME:$USERNAME /home/$USERNAME/.ssh/authorized_keys # Transferimos el dueño a nuestro usuario
 sudo chmod 600 /home/$USERNAME/.ssh/authorized_keys # le damos solo al dueño permisos de lectura y edición
 ```
