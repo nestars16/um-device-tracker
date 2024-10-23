@@ -17,4 +17,8 @@ clean:
   rm -rf frontend/dist
 
 
+docker-deploy:
+  docker build --build-arg DATABASE_URL=$DATABASE_URL -t us-east1-docker.pkg.dev/miscellaneous-429614/misc/um-device-tracker .
+  docker push us-east1-docker.pkg.dev/miscellaneous-429614/misc/um-device-tracker
+
   
